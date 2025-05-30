@@ -1,0 +1,31 @@
+{
+  "comment_this_file": "this holds the information to create the database used by the bot",
+  "comment_this_file_2": "any key that starts with \"comment_\" is ignored by the program",
+
+  "guilds": {
+    "guild_id": "BIGINT UNSIGNED PRIMARY KEY NOT NULL",
+    "comment_is_privileged": "this is true for special servers, like any servers owned by me",
+    "is_privileged": "BOOLEAN NOT NULL",
+    "prefix": "TEXT NOT NULL",
+    "welcome_channel_id": "BIGINT UNSIGNED NULL",
+    "extend_snipe_command_to_multiple_messages": "BOOLEAN DEFAULT (false) NOT NULL"
+  },
+  "channels": {
+    "channel_id": "BIGINT UNSIGNED PRIMARY KEY NOT NULL",
+    "comment_ignore": "this marks a channel that will not be tracked by snipe & will not respond to commands",
+    "ignore": "BOOLEAN NOT NULL",
+    "snipe_webhook_url": "TEXT NULL",
+    "dmall_webhook_url": "TEXT NULL",
+    "last_deleted_message_id": "BIGINT UNSIGNED NULL"
+  },
+  "messages": {
+    "message_id": "BIGINT UNSIGNED PRIMARY KEY NOT NULL",
+    "author_nick": "TEXT NOT NULL",
+    "author_pfp_url": "TEXT NOT NULL",
+    "comment_content": "the content (aka text) of a message",
+    "content": "TEXT NOT NULL",
+    "comment_attachments": "this will be a list of attachments that will be serialized by the program",
+    "comment_attachments_2": "the attachments will be separated by a comma (,)",
+    "attachments": "TEXT NOT NULL"
+  }
+}

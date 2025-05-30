@@ -1,0 +1,7 @@
+discord
+gitpython
+aiosqlite
+undetected-chromedriver
+icrawler
+yt-dlp
+aioboto3==13.3.0
