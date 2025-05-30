@@ -28,7 +28,7 @@ class Misc(commands.Cog):
     @commands.command()
     async def about(self, ctx):
         await ctx.send("hello i amm bot craeted by mmeowmeow\n"
-                       "code will released later i in developmenbt ")
+                       "code is now rel eased !!! https://github.com/meow6969/superawesometvshowbot ")
 
     @commands.command()
     async def pfp(self, ctx, user: discord.Member = None):
