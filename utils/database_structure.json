@@ -8,7 +8,9 @@
     "is_privileged": "BOOLEAN NOT NULL",
     "prefix": "TEXT NOT NULL",
     "welcome_channel_id": "BIGINT UNSIGNED NULL",
-    "extend_snipe_command_to_multiple_messages": "BOOLEAN DEFAULT (false) NOT NULL"
+    "extend_snipe_command_to_multiple_messages": "BOOLEAN DEFAULT (false) NOT NULL",
+    "comment_jailed_users": "this is an array where the type is INT,INT|INT,INT|...",
+    "jailed_users": "TEST NULL"
   },
   "channels": {
     "channel_id": "BIGINT UNSIGNED PRIMARY KEY NOT NULL",

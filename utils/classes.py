@@ -3,6 +3,7 @@ from __future__ import annotations
 from configparser import ConfigParser
 
 import aiosqlite
+import re
 import asyncio
 import math
 import json
@@ -44,13 +45,14 @@ from utils.funcs import find_url_from_message
 # my only wish in this world is to never need to open this file ever again
 
 class DatabaseGuild:
-    def __init__(self, guild_id: int, is_privileged: bool, prefix: str, welcome_channel_id: int | None,
-                 extend_snipe_command_to_multiple_messages: bool = False):
+    def __init__(self, guild_id: int, is_privileged: bool, prefix: str, welcome_channel_id: int | None = None,
+                 extend_snipe_command_to_multiple_messages: bool = False, jailed_users: str | None = None):
         self.guild_id: int = guild_id
         self.is_privileged: bool = is_privileged
         self.prefix: str = prefix
         self.welcome_channel_id: int | None = welcome_channel_id
         self.extend_snipe_command_to_multiple_messages: bool = extend_snipe_command_to_multiple_messages
+        self.jailed_users: str | None = jailed_users
 
 
 class Database:
@@ -200,7 +202,8 @@ class Database:
                 guild_info["is_privileged"],
                 guild_info["prefix"],
                 guild_info["welcome_channel_id"],
-                guild_info["extend_snipe_command_to_multiple_messages"]
+                guild_info["extend_snipe_command_to_multiple_messages"],
+                guild_info["jailed_users"]
             )
             self.guilds_info = new_guild_info
         else:
@@ -267,7 +270,7 @@ class Database:
 
     async def insert_guild_to_database(
             self, guild: discord.Guild, is_privileged=None, prefix=None, welcome_channel_id=None,
-            extend_snipe_command_to_multiple_messages=None):
+            extend_snipe_command_to_multiple_messages=None, jailed_users=None):
         objects_to_insert = {}
         if is_privileged is not None:
             objects_to_insert["is_privileged"] = is_privileged
@@ -277,6 +280,8 @@ class Database:
             objects_to_insert["welcome_channel_id"] = welcome_channel_id
         if extend_snipe_command_to_multiple_messages is not None:
             objects_to_insert["extend_snipe_command_to_multiple_messages"] = extend_snipe_command_to_multiple_messages
+        if jailed_users is not None:
+            objects_to_insert["jailed_users"] = jailed_users
         if await self.check_if_key_exists("guild_id", guild.id, "guilds"):
             if len(objects_to_insert) == 0:
                 error_msg = f"insert_guild_to_database: no arguments passed for already existing guild {guild.id}"
@@ -285,7 +290,7 @@ class Database:
             await self.update_table_set_where("guilds", objects_to_insert,
                                               "guild_id", guild.id)
         else:
-            # the guild doesnt exist in the database so we need to add it
+            # the guild doesnt exist in the database so we need to add it and set default values
             objects_to_insert["guild_id"] = guild.id
             if is_privileged is None:
                 objects_to_insert["is_privileged"] = False
@@ -397,7 +402,7 @@ class Database:
         return self.fetch_one_to_dict(response, data_retrieved)
 
     async def select_guild(self, guild_id: int, is_privileged=False, prefix=False, welcome_channel_id=False,
-                           extend_snipe_command_to_multiple_messages=False) -> dict:
+                           extend_snipe_command_to_multiple_messages=False, jailed_users=False) -> dict:
         if not await self.check_if_key_exists("guild_id", guild_id, "guilds"):
             print_debug_fail(f"could not find guild_id {guild_id}")
             return {}
@@ -411,6 +416,8 @@ class Database:
             information_to_retrieve += f"welcome_channel_id, "
         if extend_snipe_command_to_multiple_messages:
             information_to_retrieve += f"extend_snipe_command_to_multiple_messages, "
+        if jailed_users:
+            information_to_retrieve += f"jailed_users, "
 
         if information_to_retrieve.strip() == '':  # no retrieval information was enabled
             return {}
@@ -1073,6 +1080,79 @@ class AwsS3Manager:
         return a
 
 
+# time in seconds: aliases for this amount of time
+# the most human readable plural form of the time unit is at the end so we can easily return it to display to users
+time_unit_codes: dict[int, list[str]] = {
+    1: ["s", "sec", "second", "seconds"],
+    60: ["m", "min", "mins", "minute", "minutes"],
+    60 * 60: ["h", "hour", "hours"],
+    24 * 60 * 60: ["d", "day", "days"],
+    7 * 24 * 60 * 60: ["w", "week", "weeks"],
+    30 * 24 * 60 * 60: ["mo", "mon", "month", "months"],
+    365 * 24 * 60 * 60: ["y", "year", "years"]
+}
+time_parser_regex = re.compile(r"(\A[0-9]*)\s*([a-zA-Z]*)\b")
+
+
+class DiscordTimespan:
+    time_in_seconds: int
+    time_unit: str
+    time_unit_base_seconds: int
+    num_of_time_unit: int
+    unix_time_expires: int
+
+    def __init__(self, num_of_time_unit: int, time_unit: str = "minutes"):
+        self.num_of_time_unit = num_of_time_unit
+        r = self._get_time_unit(time_unit)
+        if r[0] is None:
+            raise Exception(f"Invalid time unit '{time_unit}'")
+        self.time_unit_base_seconds = r[0]
+        self.time_unit = r[1]
+        self.time_in_seconds = self.time_unit_base_seconds * self.num_of_time_unit
+        self.unix_time_expires = int(time.time() + self.time_in_seconds)
+
+    def __str__(self):
+        return f"{self.num_of_time_unit} {self.time_unit}"
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __gt__(self, other):
+        return self.unix_time_expires > other
+
+    @classmethod
+    async def convert(cls, ctx: commands.Context, argument: str) -> DiscordTimespan:
+        time_span = cls.from_str(argument)
+        if time_span is None:
+            raise commands.BadArgument(f"Invalid time span '{argument}'")
+        return time_span
+
+    @staticmethod
+    def _get_time_unit(in_str: str) -> tuple[int, str] | tuple[None, None]:
+        # returns the time unit in seconds as well as the human readable name in a tuple
+
+        for seconds in time_unit_codes.keys():
+            if in_str in time_unit_codes[seconds]:
+                return seconds, time_unit_codes[seconds][-1]
+        return None, None
+
+    @staticmethod
+    def from_str(in_str: str) -> DiscordTimespan | None:
+        # returns the number parsed from in_str, the human readable time unit parsed from in_str, and the
+
+        r = time_parser_regex.findall(in_str)
+        if len(r) == 0:
+            return None
+        r_groups = r[0]
+        if not r_groups[0].isdigit():
+            return None
+        n = int(r_groups[0])
+        _, unit = DiscordTimespan._get_time_unit(r_groups[1])
+        if unit is None:
+            return DiscordTimespan(n)
+        return DiscordTimespan(n, unit)
+
+
 def test_google_images():
     queries = [
         "meow",
@@ -1115,6 +1195,7 @@ def test_s3():
 
 
 safe_math_evaluator = SafeMathEvaluator()
+
 
 if __name__ == "__main__":
     test_s3()

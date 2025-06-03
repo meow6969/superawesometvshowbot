@@ -75,7 +75,8 @@ class OnMsg(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):  # TODO: welcome channel thing
-        await member.add_roles(discord.utils.get(member.guild.roles, id=1367336990252732507))
+        pass
+        # await member.add_roles(discord.utils.get(member.guild.roles, id=1367336990252732507))
 
     @commands.Cog.listener()
     async def on_reload_cmd_success(self):

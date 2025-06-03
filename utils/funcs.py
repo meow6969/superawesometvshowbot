@@ -5,10 +5,11 @@ from discord.ext import commands
 
 from utils.logger import print_debug_blank
 
-# url_verifier_regex = re.compile(r'\Ahttp(?:s|(?:)):\/\/(?=(?:\w+?\.\w+)+)[\w\.]*?\/[\S]*\b')
+# url_verifier_regex = re.compile(r"\Ahttp(?:s|(?:)):\/\/(?=(?:\w+?\.\w+)+)[\w\.]*?\/[\S]*\b")
 # the old one would only find a url if it was at the very start of the string
 # this one finds all of the urls in a string
-url_verifier_regex = re.compile(r'\bhttp(?:s|(?:)):\/\/(?=(?:\w+?\.\w+)+)[\w\.]*?\/[\S]*\b')
+# url_verifier_regex = re.compile(r"\bhttp(?:s|(?:)):\/\/(?=(?:\w+?\.\w+)+)[\w\.]*?\/[\S]*\b")
+url_verifier_regex = re.compile(r"\bhttp(?:s|)://(?=(?:\w+?\.\w+)+)[\w.]*?/\S*(?=\s|$)")
 
 
 def get_prefix(client: commands.Bot, message: discord.Message) -> str:

@@ -10,11 +10,16 @@ import git
 import os
 import importlib
 import sys
+import typing
 import re
+import time
+import copy
 
 import aiohttp
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
+from discord.ext.commands import Context
+from discord.ext.commands._types import BotT
 
 import utils.funcs
 from utils.logger import *
@@ -68,9 +73,14 @@ class Moderator(commands.Cog):
     exec_cmd_options = ["return", "timeout"]
     exec_cmd_get_options_regex = re.compile(f"-{{0,2}}(?:({'|'.join(exec_cmd_options)}))=(\\w+)")
     exec_py_get_options_regex = re.compile(f"-{{0,2}}(?:({'|'.join(exec_py_options)}))=(\\w+)")
+    default_jail_timespan = classes.DiscordTimespan.from_str("15m")
 
     def __init__(self, client):
         self.client = client
+        self.unjailer.start()
+
+    def cog_unload(self):
+        self.unjailer.cancel()
 
     @commands.command(brief='clears the channels pins',
                       description='clears the channels pins and posts them all in a seperate channel', hidden=True)
@@ -270,7 +280,7 @@ class Moderator(commands.Cog):
                     f"{format_option[1]}")
         await ctx.send(msg)
 
-    @commands.command(hidden=True)
+    @commands.command(hidden=True, aliases=["exec"])
     async def execute(self, ctx, *, code):
         if ctx.author.id not in self.client.owners:
             return
@@ -334,9 +344,6 @@ class Moderator(commands.Cog):
         if isinstance(error, commands.MissingRequiredArgument):
             await ctx.send(f"you didnt give a prefix, but my current prefix is "
                            f"`{await self.client.get_prefix(ctx.message)}`")
-            return
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.send("you need moderate_members permission to change my prefix")
             return
         raise error
 
@@ -402,13 +409,111 @@ class Moderator(commands.Cog):
         await ctx.channel.send(f"purged {num} messages")
 
     @commands.command()
-    @commands.has_permissions(administrator=True)
+    # @commands.has_permissions(administrator=True)
+    @commands.has_permissions(manage_messages=True)
     async def clear(self, ctx):
         await ctx.send("https://tenor.com/view/fuwamoco-fuwawa-mococo-フワワ-モココ-gif-9014022038646658986 "
                        "https://tenor.com/view/limbus-company-ishmael-ishmael-brainrot-gif-11592142758723011036 "
                        "https://tenor.com/view/senatorlia-robin-hsr-star-rail-robin-hsr-gif-1904876825581590663 "
                        "https://tenor.com/view/smh-anime-girl-gif-12459523042458670621 "
                        "https://tenor.com/view/reimu-reimu-hakurei-china-love-love-china-gif-4739820462458512257 ")
+
+    @staticmethod
+    async def get_jail_role(guild: discord.Guild) -> discord.Role:
+        for role in guild.roles:
+            if role.name == "jail":
+                return role
+        return await guild.create_role(name="jail", permissions=discord.Permissions.none())
+
+    async def set_channel_jail_role(self, channel: discord.TextChannel, jail_role: discord.Role = None):
+        if jail_role is None:
+            jail_role = await self.get_jail_role(channel.guild)
+        perms = channel.overwrites_for(channel.guild.default_role)
+        perms.update(send_messages=False, manage_webhooks=False, manage_permissions=False, manage_threads=False,
+                     manage_messages=False)
+
+        await channel.set_permissions(jail_role, overwrite=perms)
+
+    @staticmethod
+    async def member_jail_string_to_dict(s: str) -> dict[int, int]:
+        r_dict: dict[int, int] = {}
+        for r in s.split("|"):
+            a = r.split(",")
+            if len(a) != 2:
+                continue
+            r_dict[int(a[0])] = int(a[1])
+        return r_dict
+
+    @staticmethod
+    async def jail_dict_to_string(jail_dict: dict[int, int]) -> str:
+        r_str = ""
+        for user in jail_dict.keys():
+            r_str += f"{user},{jail_dict[user]}|"
+        return r_str[:-1]
+
+    async def get_guild_jail_dict(self, guild: discord.Guild) -> dict[int, int]:
+        r = await self.client.db.select_guild(guild.id, jailed_users=True)
+        if r["jailed_users"] is None:
+            return {}
+        return await self.member_jail_string_to_dict(r["jailed_users"])
+
+    async def set_guild_jail_dict(self, guild: discord.Guild, jail_dict: dict[int, int]):
+        await self.client.db.insert_guild_to_database(guild, jailed_users=await self.jail_dict_to_string(jail_dict))
+
+    async def get_member_jail_status(self, member: discord.Member) -> int | bool:
+        jailed_users = await self.get_guild_jail_dict(member.guild)
+        if jailed_users is None:
+            return False
+        if member.id in jailed_users:
+            return jailed_users[member.id]
+        return False
+
+    async def remove_member_from_jail(self, member: discord.Member) -> bool:
+        jail_list = await self.get_guild_jail_dict(member.guild)
+        if jail_list is None:
+            return False
+        jail_role = await self.get_jail_role(member.guild)
+        if jail_role not in member.roles and member.id not in jail_list.keys():
+            return False
+        if jail_role in member.roles:
+            await member.remove_roles(jail_role)
+        if member not in jail_list.keys():
+            del jail_list[member.id]
+            await self.set_guild_jail_dict(member.guild, jail_list)
+        return True
+
+    @commands.command()
+    @commands.has_permissions(manage_roles=True)
+    async def jail(self, ctx: commands.Context, user: discord.Member,
+                   timespan: typing.Optional[classes.DiscordTimespan] = default_jail_timespan):
+        if ctx.author == user:
+            await ctx.send("you cant jail yourself")
+            return
+
+        r = await self.get_member_jail_status(user)
+        jail_role = await self.get_jail_role(ctx.guild)
+        # if r and r > time.time() and jail_role in user.roles:
+        #     await ctx.send("user is already jailed!")
+        #     return
+        if jail_role not in user.roles:
+            await user.add_roles(jail_role)
+        jailed_users = await self.get_guild_jail_dict(ctx.guild)
+        jailed_users[user.id] = timespan.unix_time_expires
+        await self.set_guild_jail_dict(ctx.guild, jailed_users)
+        await ctx.send(f"jailed user for {timespan}")
+
+    @commands.command()
+    @commands.has_permissions(manage_roles=True)
+    async def unjail(self, ctx: commands.Context, user: discord.Member):
+        if ctx.author == user:
+            await ctx.send("u cant unjail ytourself")
+            return
+
+        if not await self.remove_member_from_jail(user):
+            await ctx.send("user is not in jail")
+            return
+
+        await ctx.send("user is no longer in jail")
 
     @commands.command(hidden=True)
     async def reload(self, ctx):
@@ -453,6 +558,31 @@ class Moderator(commands.Cog):
     async def test_get_url(self, ctx):
         await ctx.send(f"the url i got is: {await utils.funcs.find_url_from_message(self.client, ctx.message)}")
 
+    @tasks.loop(seconds=1)
+    async def unjailer(self):
+        if not hasattr(self.client, "db"):
+            return
+
+        cur_time = time.time()
+        for guild in self.client.guilds:
+            jail_list = await self.get_guild_jail_dict(guild)
+            if jail_list is None:
+                continue
+            jail_role = await self.get_jail_role(guild)
+            jail_list_keys = copy.deepcopy(list(jail_list.keys()))
+            for user in jail_list_keys:
+                if jail_list[user] < cur_time:
+                    await guild.get_member(user).remove_roles(jail_role)
+                    del jail_list[user]
+            await self.set_guild_jail_dict(guild, jail_list)
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx: Context[BotT], error: Exception) -> None:
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send(f"you need {error.missing_permissions} permissions to run this command")
+            return
+        raise error
+
     @commands.Cog.listener()
     async def on_command_completion(self, ctx):
         pass
@@ -461,6 +591,27 @@ class Moderator(commands.Cog):
         #         owners = json.load(file)["owner-ids"]
         #     if ctx.author.id in owners:
         #         importlib.reload(dmall)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_create(self, channel: discord.TextChannel):
+        if isinstance(channel, discord.CategoryChannel):
+            # noinspection PyTypeChecker
+            await self.set_channel_jail_role(channel)
+
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild):
+        jail_role = await self.get_jail_role(guild)
+        for channel in guild.channels:
+            if isinstance(channel, discord.CategoryChannel):
+                # noinspection PyTypeChecker
+                await self.set_channel_jail_role(channel, jail_role)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        r = await self.get_member_jail_status(member)
+        if r and r > time.time():
+            jail_role = await self.get_jail_role(member.guild)
+            await member.add_roles(jail_role)
 
 
 async def setup(client):
