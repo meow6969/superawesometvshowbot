@@ -429,8 +429,9 @@ class Moderator(commands.Cog):
         if jail_role is None:
             jail_role = await self.get_jail_role(channel.guild)
         perms = channel.overwrites_for(channel.guild.default_role)
-        perms.update(send_messages=False, manage_webhooks=False, manage_permissions=False, manage_threads=False,
-                     manage_messages=False)
+        perms.update(send_messages=False, send_messages_in_threads=False, manage_webhooks=False,
+                     manage_permissions=False, manage_threads=False, manage_messages=False,
+                     create_private_threads=False, create_public_threads=False)
 
         await channel.set_permissions(jail_role, overwrite=perms)
 
@@ -484,7 +485,7 @@ class Moderator(commands.Cog):
 
     @commands.command()
     @commands.has_permissions(manage_roles=True)
-    async def jail(self, ctx: commands.Context, user: discord.Member,
+    async def jail(self, ctx: commands.Context, user: discord.Member, *,
                    timespan: typing.Optional[classes.DiscordTimespan] = default_jail_timespan):
         if ctx.author == user:
             await ctx.send("you cant jail yourself")

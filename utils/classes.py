@@ -15,7 +15,7 @@ import requests
 import ast
 import operator
 import inspect
-from typing import Callable
+from typing import Callable, Optional
 
 from lxml.html.diff import href_token
 from typing_extensions import Self
@@ -1089,7 +1089,11 @@ time_unit_codes: dict[int, list[str]] = {
     24 * 60 * 60: ["d", "day", "days"],
     7 * 24 * 60 * 60: ["w", "week", "weeks"],
     30 * 24 * 60 * 60: ["mo", "mon", "month", "months"],
-    365 * 24 * 60 * 60: ["y", "year", "years"]
+    365 * 24 * 60 * 60: ["y", "year", "years"],
+    10 * 365 * 24 * 60 * 60: ["dec", "decade", "decades"],
+    10 * 10 * 365 * 24 * 60 * 60: ["c", "cen", "century", "centuries"],
+    10 * 10 * 10 * 365 * 24 * 60 * 60: ["mil", "millennia"],
+    100000000000 * 365 * 24 * 60 * 60: ["e", "eon", "eons"]
 }
 time_parser_regex = re.compile(r"(\A[0-9]*)\s*([a-zA-Z]*)\b")
 
@@ -1121,8 +1125,8 @@ class DiscordTimespan:
         return self.unix_time_expires > other
 
     @classmethod
-    async def convert(cls, ctx: commands.Context, argument: str) -> DiscordTimespan:
-        time_span = cls.from_str(argument)
+    async def convert(cls, ctx: commands.Context, argument: str, argument_2: Optional[str] = "") -> DiscordTimespan:
+        time_span = cls.from_str(argument + f" {argument_2}")
         if time_span is None:
             raise commands.BadArgument(f"Invalid time span '{argument}'")
         return time_span
@@ -1140,7 +1144,7 @@ class DiscordTimespan:
     def from_str(in_str: str) -> DiscordTimespan | None:
         # returns the number parsed from in_str, the human readable time unit parsed from in_str, and the
 
-        r = time_parser_regex.findall(in_str)
+        r = time_parser_regex.findall(in_str.lower())
         if len(r) == 0:
             return None
         r_groups = r[0]
