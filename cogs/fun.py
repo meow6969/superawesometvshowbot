@@ -399,10 +399,9 @@ class Fun(commands.Cog):
                 await ctx.send(f"error downloading video from url {url}, got invalid result")
                 return
             info = result[1]
+            print(info)
             if not isinstance(info, dict) or "requested_downloads" not in info.keys() or \
-                    len(info["requested_downloads"]) == 0 or "filepath" not in info["requested_downloads"][0].keys() or (
-                    "filesize" not in info["requested_downloads"][0].keys() and "filesize_approx"
-                    not in info["requested_downloads"][0].keys()):
+                    len(info["requested_downloads"]) == 0 or "filepath" not in info["requested_downloads"][0].keys():
                 await ctx.send(f"error downloading video from url {url}, got invalid info")
                 return
             filepath = info["requested_downloads"][0]["filepath"]
