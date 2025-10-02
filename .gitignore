@@ -164,3 +164,5 @@ sqlite_test.db
 test.json
 unittests/log.txt
 test.py
+ytdlp_cookies.txt
+

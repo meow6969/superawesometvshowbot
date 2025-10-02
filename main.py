@@ -91,13 +91,6 @@ client.public_discord_log = public_discord_log
 
 @client.event
 async def on_ready():
-    # cogs
-    cogs = os.listdir('./cogs/')
-    for cog in cogs:
-        cog_list = cog.split('.')
-        if cog_list[len(cog_list) - 1] == 'py':
-            await client.load_extension(f'cogs.{cog_list[0]}')
-
     print_debug_okgreen(f'Logged on as {client.user}!')
 
     # https://docs.vultr.com/how-to-use-vultr-object-storage-in-python
@@ -112,6 +105,14 @@ async def on_ready():
     client.per_channel_event_tracker = utils.classes.PerChannelEventTracker()
     await client.per_channel_event_tracker.add_new_event_tracker(utils.classes.UrlEventTracker(client))
     print_debug_okgreen("event tracker successfully loaded")
+
+    # cogs
+    cogs = os.listdir('./cogs/')
+    for cog in cogs:
+        cog_list = cog.split('.')
+        if cog_list[len(cog_list) - 1] == 'py':
+            await client.load_extension(f'cogs.{cog_list[0]}')
+    print_debug_okgreen(f"cogs successfully loaded")
 
     if client.debug:
         print_debug_okgreen(f'loaded debug tv show bot')

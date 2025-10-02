@@ -1,0 +1,22 @@
+{
+  "token": "bot token here",
+  "debug": false,
+  "default_prefix": "sex!",
+  "debug_default_prefix": "gaysex?",
+  "illegal_prefix_characters": [" ", "`"],
+  "git_pull_on_reload_command": false,
+  "database_location": "sqlite.db",
+  "debug_database_location": "sqlite_debug.db",
+  "owners": ["put a list of discord user ids here who will have special admin command access"],
+  "super_awesome_tv_shows_server": "put the id here of your server",
+  "super_important_logs_channel_id": "put the id of the special debug log channel",
+  "snipe_image_channel_id": "put the id of the channel where deleted images will go",
+  "aws_s3_config": {
+    "hostname": "put the host name of your ammazon s3 server here",
+    "access_key": "put the access key of your amazon s3 server here",
+    "secret_key": "put the secret key of your amazon s3 server here",
+    "bucket_name": "put the name  of the bucket the bot will use",
+    "base_folder": "meowbot",
+    "file_link_mask": "the beginning of the file path will be replaced with this url"
+  }
+}

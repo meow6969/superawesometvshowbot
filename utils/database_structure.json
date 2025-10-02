@@ -10,7 +10,7 @@
     "welcome_channel_id": "BIGINT UNSIGNED NULL",
     "extend_snipe_command_to_multiple_messages": "BOOLEAN DEFAULT (false) NOT NULL",
     "comment_jailed_users": "this is an array where the type is INT,INT|INT,INT|...",
-    "jailed_users": "TEST NULL"
+    "jailed_users": "TEXT NULL"
   },
   "channels": {
     "channel_id": "BIGINT UNSIGNED PRIMARY KEY NOT NULL",
@@ -29,5 +29,16 @@
     "comment_attachments": "this will be a list of attachments that will be serialized by the program",
     "comment_attachments_2": "the attachments will be separated by a comma (,)",
     "attachments": "TEXT NOT NULL"
+  },
+  "users": {
+    "user_id": "BIGINT UNSIGNED PRIMARY KEY NOT NULL",
+    "comment_canvas_token": "this is be the token for the user",
+    "canvas_token": "TEXT NULL",
+    "comment_canvas_hostname": "this is be the host name of the canvas instance the user has",
+    "canvas_hostname": "TEXT NULL",
+    "comment_canvas_valid": "this is a boolean that says whether the current canvas configuration is correct",
+    "canvas_valid": "BOOLEAN DEFAULT (false) NOT NULL",
+    "comment_canvas_already_notified": "this will be a pipe (|) seperated list of canvas notification ids that we have already notified the user of",
+    "canvas_already_notified": "TEXT NULL"
   }
 }

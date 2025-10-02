@@ -54,6 +54,14 @@ class DatabaseGuild:
         self.extend_snipe_command_to_multiple_messages: bool = extend_snipe_command_to_multiple_messages
         self.jailed_users: str | None = jailed_users
 
+class DatabaseUser:
+    def __init__(self, user_id: int, canvas_token: str | None, canvas_hostname: str | None, canvas_valid: bool,
+                 canvas_already_notified: str | None):
+        self.user_id: int = user_id
+        self.canvas_token: str | None = canvas_token
+        self.canvas_hostname: str | None = canvas_hostname
+        self.canvas_valid: bool = canvas_valid
+        self.canvas_already_notified: str | None = canvas_already_notified
 
 class Database:
     db: aiosqlite.Connection
@@ -218,6 +226,17 @@ class Database:
             self.guilds_info[row[0]] = guild_info
         await cursor.close()
 
+    async def get_all_users_info(self) -> list[DatabaseUser]:
+        cursor = await self.db.cursor()
+        await cursor.execute(f"SELECT * FROM users;")
+        rows = await cursor.fetchall()
+        r: list[DatabaseUser] = []
+        for row in rows:
+            user_info = DatabaseUser(row[0], row[1], row[2], row[3], row[4])
+            r.append(user_info)
+        await cursor.close()
+        return r
+
     async def is_item_in_table(self, table_name: str, item_id: int) -> bool:
         table_id_name = await self.get_id_name_for_table(table_name)
         cursor = await self.db.execute(f"SELECT 1 FROM {table_name} WHERE {table_id_name} = {item_id};")
@@ -299,6 +318,27 @@ class Database:
             if extend_snipe_command_to_multiple_messages is None:
                 objects_to_insert["extend_snipe_command_to_multiple_messages"] = False
             await self.insert_into_table_values("guilds", objects_to_insert)
+
+    async def insert_user_to_database(
+            self, user: discord.User, canvas_token=None, canvas_hostname=None, canvas_valid=False):
+        objects_to_insert = {}
+        if canvas_token is not None:
+            objects_to_insert["objects_to_insert"] = objects_to_insert
+        if canvas_hostname is not None:
+            objects_to_insert["canvas_hostname"] = canvas_hostname
+        if canvas_valid is not None:
+            objects_to_insert["canvas_valid"] = canvas_valid
+        if await self.check_if_key_exists("user_id", user.id, "users"):
+            if len(objects_to_insert) == 0:
+                error_msg = f"insert_user_to_database: no arguments passed for already existing user {user.id}"
+                self.client.secret_discord_log(error_msg)
+                raise Exception(error_msg)
+            await self.update_table_set_where("users", objects_to_insert,
+                                              "user_id", user.id)
+        else:
+            # the user doesnt exist in the database so we need to add it and set default values
+            objects_to_insert["user_id"] = user.id
+            await self.insert_into_table_values("users", objects_to_insert)
 
     async def update_table_set_where(self, table_name: str, objects_to_insert: dict,
                                      where_key: str, where_equals) -> None:
@@ -434,6 +474,44 @@ class Database:
         await cursor.close()
 
         return self.fetch_one_to_dict(response, data_retrieved)
+
+    async def select_user(self, user_id: int, canvas_token=False, canvas_hostname=False, canvas_valid=False,
+                          canvas_already_notified=False) -> dict:
+        if not await self.check_if_key_exists("user_id", user_id, "users"):
+            print_debug_fail(f"could not find user_id {user_id}")
+            return {}
+
+        information_to_retrieve = ""
+        if canvas_token:
+            information_to_retrieve += f"canvas_token, "
+        if canvas_hostname:
+            information_to_retrieve += f"canvas_hostname, "
+        if canvas_valid:
+            information_to_retrieve += f"canvas_valid, "
+        if canvas_already_notified:
+            information_to_retrieve += f"canvas_already_notified, "
+
+        if information_to_retrieve.strip() == '':  # no retrieval information was enabled
+            return {}
+        information_to_retrieve = information_to_retrieve[:-2]  # take off the last ", "
+
+        cursor = await self.db.execute(f"""
+            SELECT {information_to_retrieve} FROM users WHERE user_id=:user_id
+        ;""", {"user_id": user_id})
+        response = await cursor.fetchone()
+
+        data_retrieved = []
+        for i in information_to_retrieve.split(','):
+            data_retrieved.append(i.strip())
+        await cursor.close()
+
+        return self.fetch_one_to_dict(response, data_retrieved)
+
+    async def update_user_canvas_notified(self, user_id: int, notified_string: str) -> None:
+        if type(notified_string) != str:
+            raise TypeError("notified_string must be a string")
+        await self.update_table_set_where("users", {"canvas_already_notified": notified_string},
+                                          "user_id", user_id)
 
     async def check_if_key_exists(self, key: str, key_value, table_name: str) -> bool:
         # print(key)
@@ -917,6 +995,8 @@ class SafeMathEvaluator:
         match node:
             case ast.Constant(value) if isinstance(value, int):
                 return value
+            case ast.Constant(value) if isinstance(value, float):
+                return value
             case ast.BinOp(left, op, right):
                 return self.ast_operators[type(op)](self.eval_math(left), self.eval_math(right))
             case ast.UnaryOp(op, operand):
@@ -1001,7 +1081,8 @@ class PerChannelEventTracker:
     _tracked_events: dict[str, EventTrackerBaseEvent] = {}
 
     def __init__(self):
-        print_debug_okgreen("per channel event tracker started")
+        pass
+        # print_debug_okgreen("per channel event tracker started")
 
     async def on_message(self, message: discord.Message):
         # print_debug_blank("checking message for urls...")

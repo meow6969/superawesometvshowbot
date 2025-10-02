@@ -3,7 +3,7 @@ import re
 import discord
 from discord.ext import commands
 
-from utils.logger import print_debug_blank
+from utils.logger import print_debug_blank, print_debug_warning
 
 # url_verifier_regex = re.compile(r"\Ahttp(?:s|(?:)):\/\/(?=(?:\w+?\.\w+)+)[\w\.]*?\/[\S]*\b")
 # the old one would only find a url if it was at the very start of the string
@@ -37,9 +37,13 @@ async def find_url_from_message(client: commands.Bot, message: discord.Message,
     if not url:
         # print_debug_blank(f"message.reference={message.reference}")
         # print_debug_blank(f"type(message.reference)={type(message.reference)}")
-        if check_reply and isinstance(message.reference, discord.MessageReference) and \
-                message.reference.cached_message is not None:
-            url = url_verifier_regex.search(message.reference.cached_message.content)
+        if check_reply and isinstance(message.reference, discord.MessageReference):
+            if message.reference.cached_message is None:
+                msg = await message.channel.fetch_message(message.reference.message_id)
+                msg_content = msg.content
+            else:
+                msg_content = message.reference.cached_message.content
+            url = url_verifier_regex.search(msg_content)
             if url is not None:
                 return url.group()
         return await do_check_tracker()

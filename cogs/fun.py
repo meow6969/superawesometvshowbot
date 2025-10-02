@@ -14,6 +14,8 @@ import pathlib
 import uuid
 
 import yt_dlp
+from discord.ext.commands import Context
+from discord.ext.commands._types import BotT
 
 import utils.classes
 import utils.funcs
@@ -57,10 +59,11 @@ class Fun(commands.Cog):
         self.snipe_currently_uploading = []
         self.snipe_commands_deferred = {}
         self.snipe_cooldown_time_s = 6
+        self.dl_currently = []
 
         # self.current_image_embeds: dict[int, tuple[discord.Message, utils.classes.ICrawlerGoogleImageResult, discord.User]] = {}
 
-    async def save_message(self, message: discord.Message, deleted=False) -> None:
+    async def save_message(self, message: discord.Message, deleted=False):
         if await self.client.db.check_if_key_exists("message_id", message.id, "messages"):
             return
         channel_info = await self.client.db.select_channel(
@@ -96,7 +99,7 @@ class Fun(commands.Cog):
             del self.snipe_commands_deferred[channel_id]
 
     # called on message 'snipe' or {prefix}snipe
-    async def snipe_script(self, message: discord.Message) -> None:
+    async def snipe_script(self, message: discord.Message):
         if message.author.bot:
             return
         if message.author.id in self.snipe_cooldowns.keys():
@@ -229,10 +232,10 @@ class Fun(commands.Cog):
         # await self.client.process_commands(message)
 
     @commands.command(
-        brief='sends the last deleted message. do sex!snipe (disable/enable) to disable/enable in the channel',
+        brief='sends the last deleted message. do <prefix>snipe (disable/enable) to disable/enable in the channel',
         description="sends the last deleted message\n"
                     "do \"<prefix>snipe (disable/enable)\" to disable/enable in the channel\n"
-                    "example: \"sex!snipe disable\" (snipe is now disabled from the entire channel)\n"
+                    "example: \"<prefix>snipe disable\" (snipe is now disabled from the entire channel)\n"
                     "default: enable\n\n"
                     f"do \"<prefix>snipe (disable/enable) multiple messages\" to disable/enable 1 snipe "
                     "message being able to be broken up into multiple messages in the server (for example, if "
@@ -358,9 +361,19 @@ class Fun(commands.Cog):
                        "RAPE   RAPE  YOU!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
     @commands.command(aliases=["dl"])
+    # @commands.after_invoke(after_dl)
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def download(self, ctx: commands.Context, url: str = ""):
         def do_download(ydl_inst, url, results):
             results.append(ydl_inst.extract_info(url))
+
+        def remove_from_list():
+            if ctx.channel.id in self.dl_currently:
+                self.dl_currently.remove(ctx.channel.id)
+
+        if ctx.channel.id in self.dl_currently:
+            await ctx.send(f"someone in this channel is already downloading something!")
+            return
 
         b4 = time.time()
 
@@ -369,21 +382,29 @@ class Fun(commands.Cog):
         if new_url is None:
             await ctx.send(f"invalid url: {url}")
             return
+        self.dl_currently.append(ctx.channel.id)
         url = new_url
         confirmation = await ctx.send(f"downloading video at url {url}...")
         ytdlp_timeout = 120
         upload_timeout = 120
         ytdlp_opts = {
             # "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            # "format": "bestvideo/best",
             "restrictfilenames": True,
             "windowsfilenames": True,
+            "outtmpl": "%(extractor)s_[%(id)s].%(ext)s",
             # "forcefilename": True,
-            "max_filesize": 209715200,
-            "format_sort": ["res:480", "+size", "+fps"],
+            # "max_filesize": 209715200,
+            # "format_sort": ["res:480", "+size", "+fps"],
+            "format_sort": ["res:480"],
+            # "format_sort": ["res:480"],
             "quiet": False,
             "paths": {"home": "/tmp"},
             "postprocessors": [{"key": "FFmpegCopyStream"}],
-            "postprocessor_args": {"copystream": ["-c:v", "libx264", "-c:a", "aac", "-f", "mp4"]}
+            "postprocessor_args": {"copystream": ["-pix_fmt", "yuv420p", "-c:a", "aac", "-f", "mp4"]},
+            "cookiefile": "./ytdlp_cookies.txt",
+            "final_ext": "mp4",
+            "noplaylist": True
         }
         with yt_dlp.YoutubeDL(ytdlp_opts) as ydl:
             result = ["cat"]
@@ -394,15 +415,18 @@ class Fun(commands.Cog):
                 ytdlp_timeout -= 0.2
                 if ytdlp_timeout < 0:
                     await ctx.send("timeout occurred while trying to download video")
+                    remove_from_list()
                     return
             if len(result) == 1:
-                await ctx.send(f"error downloading video from url {url}, got invalid result")
+                await ctx.send(f"error downloading video from url {url} , got invalid result")
+                remove_from_list()
                 return
             info = result[1]
-            print(info)
+            # print(info)
             if not isinstance(info, dict) or "requested_downloads" not in info.keys() or \
                     len(info["requested_downloads"]) == 0 or "filepath" not in info["requested_downloads"][0].keys():
-                await ctx.send(f"error downloading video from url {url}, got invalid info")
+                await ctx.send(f"error downloading video from url {url} , got invalid info")
+                remove_from_list()
                 return
             filepath = info["requested_downloads"][0]["filepath"]
             filesize = os.path.getsize(filepath)
@@ -418,37 +442,39 @@ class Fun(commands.Cog):
         if 10000000 <= filesize:
             video_url = await self.client.s3.upload_file_to_bucket(
                 pathlib.Path(filepath),
-                f"meowbot/{str(uuid.uuid4()).replace('-', '')}_{pathlib.Path(filename).name}"
+                f"meowbot/{str(uuid.uuid4()).replace('-', '')}_{pathlib.Path(filename).name}.mp4"
             )
-            # p = subprocess.Popen(["/home/meow/.local/bin/jesterupload", filepath, "temp"], stdout=subprocess.PIPE,
-            #                      stderr=subprocess.PIPE)
-            # r = p.poll()
-            #
-            # # print(r)
-            # while r is None:
-            #     r = p.poll()
-            #     upload_timeout -= .2
-            #     await asyncio.sleep(.2)
-            #     if upload_timeout <= 0:
-            #         p.terminate()
-            #         await ctx.send("timeout occurred when uploading file to server")
-            #         return
-            # if p.returncode != 0:
-            #     await ctx.send(f"error uploading file to server")
-            #     return
-            # video_url, _ = p.communicate()
-            # if isinstance(video_url, bytes):
-            #     video_url = video_url.decode("utf-8")
             await confirmation.delete()
-            await ctx.reply(f"took {time.time() - b4} seconds\n"
+            await ctx.reply(f"took `{time.time() - b4:0.1f}` seconds\n"
                             f"{video_url}")
+            remove_from_list()
             return
         await confirmation.delete()
-        await ctx.reply(file=discord.File(filepath, filename=filename))
+        await ctx.reply(f"took `{time.time() - b4:0.1f}` seconds",
+                        file=discord.File(filepath, filename=f"{filename}.mp4"))
+        remove_from_list()
+
+    @download.error
+    async def download_error(self, ctx: Context[BotT], error) -> None:
+        if isinstance(error, commands.CommandOnCooldown):
+            return
+        if ctx.channel.id in self.dl_currently:
+            self.dl_currently.remove(ctx.channel.id)
+
+    @commands.command()
+    async def pomu(self, ctx):
+        await ctx.send("https://cdn.discordapp.com/attachments/825875712559808522/1380730535030030347/"
+                       "idcimpomuidontcareimpomu.mp4")
+
+    @commands.command()
+    async def hedgehog(self, ctx):
+        await ctx.send("https://cdn.discordapp.com/attachments/825875712559808522/1385666214839451879/"
+                       "animehedgehogbestimageeversaddepressionepicamazinglifechanging.png")
 
     @commands.Cog.listener()
     async def on_reload_cmd_success(self):
         for module in self.client.get_modules_to_reload(sys.modules):
+            print(module)
             importlib.reload(module)
 
 
