@@ -58,10 +58,15 @@ class DatabaseUser:
     def __init__(self, user_id: int, canvas_token: str | None, canvas_hostname: str | None, canvas_valid: bool,
                  canvas_already_notified: str | None):
         self.user_id: int = user_id
+        self.canvas_token: str = canvas_token
         self.canvas_token: str | None = canvas_token
         self.canvas_hostname: str | None = canvas_hostname
         self.canvas_valid: bool = canvas_valid
         self.canvas_already_notified: str | None = canvas_already_notified
+
+    @property
+    def id(self) -> int:
+        return self.user_id
 
 class Database:
     db: aiosqlite.Connection
@@ -507,11 +512,31 @@ class Database:
 
         return self.fetch_one_to_dict(response, data_retrieved)
 
-    async def update_user_canvas_notified(self, user_id: int, notified_string: str) -> None:
+    async def ensure_user_id(self, user: discord.User):
+        if not await self.check_if_key_exists("user_id", user.id, "users"):
+            await self.insert_user_to_database(user)
+
+    async def update_user_canvas_notified(self, user: discord.User, notified_string: str) -> None:
         if type(notified_string) != str:
             raise TypeError("notified_string must be a string")
+        await self.ensure_user_id(user)
         await self.update_table_set_where("users", {"canvas_already_notified": notified_string},
-                                          "user_id", user_id)
+                                          "user_id", user.id)
+
+    async def update_user_canvas_hostname(self, user: discord.User, hostname: str) -> None:
+        await self.ensure_user_id(user)
+        await self.update_table_set_where("users", {"canvas_hostname": hostname},
+                                          "user_id", user.id)
+
+    async def update_user_canvas_token(self, user: discord.User, token: str) -> None:
+        await self.ensure_user_id(user)
+        await self.update_table_set_where("users", {"canvas_token": token},
+                                          "user_id", user.id)
+
+    async def update_user_canvas_valid(self, user: discord.User, valid: bool) -> None:
+        await self.ensure_user_id(user)
+        await self.update_table_set_where("users", {"canvas_valid": valid},
+                                          "user_id", user.id)
 
     async def check_if_key_exists(self, key: str, key_value, table_name: str) -> bool:
         # print(key)
