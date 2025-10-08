@@ -38,6 +38,10 @@ class Misc(commands.Cog):
         await ctx.send(user.avatar.url)
 
     @commands.command()
+    async def nyanya(self, ctx):
+        await ctx.send("<a:FUMOPENGUIINDANCE:1423493655217569973>")
+
+    @commands.command()
     async def math(self, ctx, *, math_expression):
         try:
             r = safe_math_evaluator.eval_math(math_expression)

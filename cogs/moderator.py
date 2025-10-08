@@ -532,6 +532,10 @@ class Moderator(commands.Cog):
         #     config = json.load(configf)
         #     self.client.owners = config['owners']
 
+        if "last_pip_update" not in self.client.__dict__ or self.client.last_pip_update + (60 * 60 * 24) < time.time():
+            self.client.last_pip_update = time.time()
+            subprocess.run(["pip3", "install", "yt-dlp", "--upgrade"])
+
         try:
             cogs_ = os.listdir('./cogs/')
             for cog_ in cogs_:
